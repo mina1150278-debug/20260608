@@ -5,6 +5,9 @@ let modelLoaded = false; // 用於自我檢查模型載入狀態
 let gameState = "WAITING"; // 遊戲狀態：WAITING, PLAY, GAMEOVER
 let playerX; // 角色的平滑 X 座標
 let targetX; // 手指偵測到的目標 X 座標
+let fallingObjects = []; // 掉落物陣列
+let score = 0; // 分數
+let fallSpeedMultiplier = 1; // 掉落速度倍率
 const playerWidth = 120; // 角色寬度
 
 function setup() {
@@ -69,12 +72,14 @@ function draw() {
                    hand.pinky_finger_tip.y < hand.pinky_finger_pip.y;
       
       if (isOpen) {
+        resetGame();
         gameState = "PLAY";
       }
     }
 
     // 如果目前在等待狀態且偵測到手，就開始遊戲
     if (gameState === "WAITING") {
+      resetGame();
       gameState = "PLAY";
     }
   }
@@ -103,16 +108,53 @@ function draw() {
     text("Please show your hand to the camera to start", width / 2, height / 2 + 40);
     pop();
   } else if (gameState === "PLAY") {
-    // 1. 平滑移動邏輯：使用 lerp 讓 playerX 慢慢靠近 targetX
+    // --- 1. 玩家控制邏輯 ---
     playerX = lerp(playerX, targetX, 0.15);
-    
-    // 2. 限制移動範圍，不超出左右邊界
     playerX = constrain(playerX, playerWidth / 2, width - playerWidth / 2);
 
-    // 3. 繪製玩家角色 (這裡用一個圓角矩形代表)
-    fill(100, 150, 255);
+    // --- 2. 繪製盤子 ---
+    fill(220); // 淺灰色盤子
+    stroke(100);
+    strokeWeight(2);
     rectMode(CENTER);
-    rect(playerX, height - 60, playerWidth, 30, 10);
+    // 繪製盤身 (半圓弧)
+    arc(playerX, height - 65, playerWidth, 40, 0, PI, CHORD);
+    // 繪製盤底
+    rect(playerX, height - 43, playerWidth * 0.5, 8, 2);
+
+    // --- 3. 生成與更新掉落物 ---
+    // 每 60 影格 (約1秒) 隨機生成一個掉落物
+    if (frameCount % 60 === 0) {
+      let type = random(1) < 0.8 ? "fruit" : "boom"; // 80% 水果, 20% 炸彈
+      fallingObjects.push(new FallingObject(type));
+    }
+
+    // 更新與檢查所有掉落物
+    for (let i = fallingObjects.length - 1; i >= 0; i--) {
+      let obj = fallingObjects[i];
+      obj.update(fallSpeedMultiplier);
+      obj.display();
+
+      // 如果掉出畫面底部，則移除物件以節省記憶體
+      if (obj.y > height + 50) {
+        fallingObjects.splice(i, 1);
+      }
+    }
+
+    // --- 4. 難度調整 ---
+    // 根據分數調整速度倍率，每 10 分增加 0.2 倍速
+    fallSpeedMultiplier = 1 + (score / 50);
+
+    // --- 5. 顯示 UI ---
+    push();
+    scale(-1, 1); // 翻轉回正常文字方向
+    translate(-width, 0);
+    fill(0);
+    textSize(24);
+    textAlign(LEFT);
+    text("Score: " + score, 20, 70);
+    pop();
+
   } else {
     // 遊戲結束畫面 (需要處理鏡像文字問題)
     push();
@@ -124,6 +166,55 @@ function draw() {
     text("GAME OVER", width / 2, height / 2);
     textSize(20);
     text("Open Hand to Restart", width / 2, height / 2 + 50);
+    pop();
+  }
+}
+
+function resetGame() {
+  fallingObjects = [];
+  score = 0;
+  fallSpeedMultiplier = 1;
+  playerX = width / 2;
+}
+
+// --- 掉落物類別設計 ---
+class FallingObject {
+  constructor(type) {
+    this.x = random(50, width - 50);
+    this.y = -50; // 從畫面上方外面開始
+    this.type = type; // "fruit" 或 "boom"
+    this.size = 35;
+    this.speed = random(3, 8); // 隨機基礎速度
+
+    // 設定顏色
+    if (this.type === "fruit") {
+      let fruitColors = [
+        [255, 50, 50],   // 紅色 (蘋果)
+        [255, 150, 0],  // 橘色 (橘子)
+        [255, 240, 50],  // 黃色 (香蕉)
+        [140, 220, 50],  // 綠色 (葡萄)
+        [180, 80, 255]   // 紫色 (紫葡萄)
+      ];
+      this.color = random(fruitColors);
+    } else {
+      this.color = [30, 30, 30]; // 炸彈為深黑色
+    }
+  }
+
+  update(multiplier) {
+    // 根據全域倍率讓物體掉落
+    this.y += this.speed * multiplier;
+  }
+
+  display() {
+    push();
+    noStroke();
+    fill(this.color);
+    ellipse(this.x, this.y, this.size);
+    
+    // 增加一個小亮點讓它看起來更像圓球
+    fill(255, 100);
+    ellipse(this.x - this.size/4, this.y - this.size/4, this.size/3);
     pop();
   }
 }
