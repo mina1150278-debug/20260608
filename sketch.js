@@ -138,9 +138,17 @@ function draw() {
     rect(playerX, height - 43, playerWidth * 0.5, 8, 2);
 
     // --- 4. 生成與更新掉落物 ---
-    if (frameCount % 60 === 0) {
-      let type = random(1) < 0.8 ? "fruit" : "boom"; // 80% 水果, 20% 炸彈
-      fallingObjects.push(new FallingObject(type));
+    // 根據分數縮短生成間隔，最快每 30 影格生一次 (約 0.5 秒)
+    let spawnInterval = max(30, 50 - floor(score / 20) * 5);
+    
+    if (frameCount % spawnInterval === 0) {
+      // 初始生成一個物件
+      fallingObjects.push(new FallingObject(random(1) < 0.8 ? "fruit" : "boom"));
+      
+      // 連鎖生成：只要 30% 機率成功，就繼續生成下一個，直到失敗為止
+      while (random(1) < 0.3) {
+        fallingObjects.push(new FallingObject(random(1) < 0.8 ? "fruit" : "boom"));
+      }
     }
 
     // 更新與檢查所有掉落物
@@ -247,8 +255,8 @@ class FallingObject {
   }
 
   update(multiplier) {
-    // 根據全域倍率讓物體掉落
-    this.y += this.speed * multiplier;
+    // 根據全域倍率讓物體掉落，但最高速度限制在 8
+    this.y += Math.min(this.speed * multiplier, 8);
   }
 
   display() {
