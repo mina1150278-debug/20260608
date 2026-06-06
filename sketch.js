@@ -6,7 +6,10 @@ let gameState = "WAITING"; // 遊戲狀態：WAITING, PLAY, GAMEOVER
 let playerX; // 角色的平滑 X 座標
 let targetX; // 手指偵測到的目標 X 座標
 let fallingObjects = []; // 掉落物陣列
+let particles = []; // 爆炸粒子陣列
+let floatingTexts = []; // 漂浮文字特效陣列
 let score = 0; // 分數
+let hp = 3; // 生命值
 let fallSpeedMultiplier = 1; // 掉落速度倍率
 const playerWidth = 120; // 角色寬度
 
@@ -112,18 +115,29 @@ function draw() {
     playerX = lerp(playerX, targetX, 0.15);
     playerX = constrain(playerX, playerWidth / 2, width - playerWidth / 2);
 
-    // --- 2. 繪製盤子 ---
-    fill(220); // 淺灰色盤子
+    // --- 2. 處理特效更新 ---
+    // 更新粒子
+    for (let i = particles.length - 1; i >= 0; i--) {
+      particles[i].update();
+      particles[i].display();
+      if (particles[i].finished()) particles.splice(i, 1);
+    }
+    // 更新漂浮文字
+    for (let i = floatingTexts.length - 1; i >= 0; i--) {
+      floatingTexts[i].update();
+      floatingTexts[i].display();
+      if (floatingTexts[i].finished()) floatingTexts.splice(i, 1);
+    }
+
+    // --- 3. 繪製盤子 ---
+    fill(hp > 1 ? 220 : color(255, 100, 100)); // 血量低時盤子變紅
     stroke(100);
     strokeWeight(2);
     rectMode(CENTER);
-    // 繪製盤身 (半圓弧)
     arc(playerX, height - 65, playerWidth, 40, 0, PI, CHORD);
-    // 繪製盤底
     rect(playerX, height - 43, playerWidth * 0.5, 8, 2);
 
-    // --- 3. 生成與更新掉落物 ---
-    // 每 60 影格 (約1秒) 隨機生成一個掉落物
+    // --- 4. 生成與更新掉落物 ---
     if (frameCount % 60 === 0) {
       let type = random(1) < 0.8 ? "fruit" : "boom"; // 80% 水果, 20% 炸彈
       fallingObjects.push(new FallingObject(type));
@@ -135,24 +149,52 @@ function draw() {
       obj.update(fallSpeedMultiplier);
       obj.display();
 
+      // 碰撞偵測 (盤子頂部高度約在 height-65)
+      if (obj.y > height - 85 && obj.y < height - 45 && 
+          abs(obj.x - playerX) < playerWidth / 2) {
+        
+        if (obj.type === "fruit") {
+          score += 10;
+          floatingTexts.push(new FloatingText(obj.x, obj.y, "+10"));
+        } else {
+          hp -= 1;
+          // 產生 15-20 個爆炸粒子
+          let count = random(15, 20);
+          for (let j = 0; j < count; j++) {
+            particles.push(new Particle(obj.x, obj.y));
+          }
+          if (hp <= 0) gameState = "GAMEOVER";
+        }
+        fallingObjects.splice(i, 1);
+        continue;
+      }
+
       // 如果掉出畫面底部，則移除物件以節省記憶體
       if (obj.y > height + 50) {
         fallingObjects.splice(i, 1);
       }
     }
 
-    // --- 4. 難度調整 ---
-    // 根據分數調整速度倍率，每 10 分增加 0.2 倍速
+    // --- 5. 難度調整 ---
     fallSpeedMultiplier = 1 + (score / 50);
 
-    // --- 5. 顯示 UI ---
+    // --- 6. 顯示 UI ---
     push();
     scale(-1, 1); // 翻轉回正常文字方向
     translate(-width, 0);
+    fill(50);
+    noStroke();
+    rectMode(CORNER);
+    // 繪製半透明背景框
+    fill(255, 150);
+    rect(10, 50, 180, 70, 10);
     fill(0);
     textSize(24);
     textAlign(LEFT);
-    text("Score: " + score, 20, 70);
+    text("Score: " + score, 25, 80);
+    // HP 顯示，危險時變紅色
+    if (hp === 1) fill(255, 0, 0);
+    text("HP: " + "❤️".repeat(hp), 25, 110);
     pop();
 
   } else {
@@ -172,7 +214,10 @@ function draw() {
 
 function resetGame() {
   fallingObjects = [];
+  particles = [];
+  floatingTexts = [];
   score = 0;
+  hp = 3;
   fallSpeedMultiplier = 1;
   playerX = width / 2;
 }
@@ -215,6 +260,69 @@ class FallingObject {
     // 增加一個小亮點讓它看起來更像圓球
     fill(255, 100);
     ellipse(this.x - this.size/4, this.y - this.size/4, this.size/3);
+    pop();
+  }
+}
+
+// --- 爆炸粒子類別 ---
+class Particle {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.vx = random(-5, 5);
+    this.vy = random(-5, 5);
+    this.alpha = 255;
+    this.size = random(4, 8);
+  }
+
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.alpha -= 10; // 逐漸消失
+  }
+
+  finished() {
+    return this.alpha < 0;
+  }
+
+  display() {
+    push();
+    noStroke();
+    fill(0, this.alpha);
+    ellipse(this.x, this.y, this.size);
+    pop();
+  }
+}
+
+// --- 漂浮文字特效 ---
+class FloatingText {
+  constructor(x, y, txt) {
+    this.x = x;
+    this.y = y;
+    this.txt = txt;
+    this.alpha = 255;
+  }
+
+  update() {
+    this.y -= 2; // 向上飄
+    this.alpha -= 5;
+  }
+
+  finished() {
+    return this.alpha < 0;
+  }
+
+  display() {
+    push();
+    // 文字也需要處理鏡像
+    translate(this.x, this.y);
+    scale(-1, 1); 
+    fill(50, 200, 50, this.alpha);
+    noStroke();
+    textSize(32);
+    textStyle(BOLD);
+    textAlign(CENTER);
+    text(this.txt, 0, 0);
     pop();
   }
 }
